@@ -1,17 +1,15 @@
-(with K8S Stage)
-
 pipeline {
     agent any
 
     tools {
-        jdk 'jdk17'
+        jdk 'jdk21'
         nodejs 'node23'
     }
 
     environment {
         SCANNER_HOME = tool 'sonar-scanner'
-        DOCKER_IMAGE = 'kastrov/bms:latest'
-        EKS_CLUSTER_NAME = 'kastro-eks'
+        DOCKER_IMAGE = 'aarush30/bms:latest'
+        EKS_CLUSTER_NAME = 'shubham-eks'
         AWS_REGION = 'us-east-1'
     }
 
@@ -24,7 +22,7 @@ pipeline {
 
         stage('Checkout from Git') {
             steps {
-                git branch: 'main', url: 'https://github.com/KastroVKiran/Book-My-Show.git'
+                git branch: 'main', url: 'https://github.com/shubh1623/Book-My-Show.git'
                 sh 'ls -la'  // Verify files after checkout
             }
         }
@@ -44,7 +42,7 @@ pipeline {
         stage('Quality Gate') {
             steps {
                 script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token'
+                    waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token'
                 }
             }
         }
@@ -67,8 +65,18 @@ pipeline {
 
         stage('OWASP FS Scan') {
             steps {
-                dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
-                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+                dependencyCheck( odcInstallation: 'DP-Check', 
+                    additionalArguments: ''' 
+                    --scan .
+                    --format XML 
+                    --out .
+                    --disableYarnAudit 
+                    --disableNodeAudit 
+                ''' 
+            )
+                dependencyCheckPublisher(
+                    pattern: 'dependency-check-report.xml' 
+                )
             }
         }
 
@@ -81,8 +89,12 @@ pipeline {
         stage('Docker Build & Push') {
             steps {
                 script {
-                    withDockerRegistry(credentialsId: 'docker', toolName: 'docker') {
-                        sh ''' 
+                   docker.withRegistry(
+                'https://index.docker.io/v1/',
+                'docker'
+            ) {
+
+                sh ''' 
                         echo "Building Docker image..."
                         docker build --no-cache -t $DOCKER_IMAGE -f bookmyshow-app/Dockerfile bookmyshow-app
 
